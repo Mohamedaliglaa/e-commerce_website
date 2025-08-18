@@ -2,9 +2,9 @@
 
 import { useRouter } from "next/navigation";
 import { createContext, useContext, useEffect, useState } from "react";
+import toast from "react-hot-toast";
 
 export const AppContext = createContext();
-
 export const useAppContext = () => useContext(AppContext);
 
 export const AppContextProvider = (props) => {
@@ -31,7 +31,6 @@ export const AppContextProvider = (props) => {
     }
   }, [cartItems]);
 
-  // Fetch products from your API route (e.g. /api/products)
   const fetchProductData = async () => {
     try {
       const res = await fetch("/api/products");
@@ -39,20 +38,13 @@ export const AppContextProvider = (props) => {
       const data = await res.json();
       setProducts(data);
 
-      // Extract unique categories from fetched products
-      const uniqueCategories = ["All", ...new Set(
-  data
-    .map(p => p.category?.name) // extract just the category name
-    .filter(Boolean)            // remove undefined/null
-)];
-
+      const uniqueCategories = ["All", ...new Set(data.map(p => p.category?.name).filter(Boolean))];
       setCategories(uniqueCategories);
     } catch (error) {
       console.error("Error fetching products:", error);
     }
   };
 
-  // Fetch user data from your API route (e.g. /api/user)
   const fetchUserData = async () => {
     try {
       const res = await fetch("/api/user");
@@ -64,33 +56,47 @@ export const AppContextProvider = (props) => {
     }
   };
 
-  const addToCart = async (itemId) => {
-    const cartData = structuredClone(cartItems);
-    cartData[itemId] = (cartData[itemId] || 0) + 1;
-    setCartItems(cartData);
-  };
+  // Add product to cart with stock validation
+  const addToCart = (itemId) => {
+    const product = products.find(p => p.id === itemId);
+    if (!product) return;
 
-  const updateCartQuantity = async (itemId, quantity) => {
-    const cartData = structuredClone(cartItems);
-    if (quantity === 0) {
-      delete cartData[itemId];
-    } else {
-      cartData[itemId] = quantity;
+    const currentQty = cartItems[itemId] || 0;
+
+    if (currentQty + 1 > product.quantity) {
+      toast.error(`Stock disponible : ${product.quantity}`);
+      return;
     }
-    setCartItems(cartData);
+
+    setCartItems({ ...cartItems, [itemId]: currentQty + 1 });
   };
 
-  const getCartCount = () => {
-    return Object.values(cartItems).reduce((acc, val) => acc + val, 0);
+  // Update cart quantity with stock validation
+  const updateCartQuantity = (itemId, quantity) => {
+    const product = products.find(p => p.id === itemId);
+    if (!product) return;
+
+    if (quantity > product.quantity) {
+      toast.error(`Stock disponible : ${product.quantity}`);
+      return;
+    }
+
+    if (quantity <= 0) {
+      const updatedCart = { ...cartItems };
+      delete updatedCart[itemId];
+      setCartItems(updatedCart);
+    } else {
+      setCartItems({ ...cartItems, [itemId]: quantity });
+    }
   };
+
+  const getCartCount = () => Object.values(cartItems).reduce((acc, val) => acc + val, 0);
 
   const getCartAmount = () => {
     let totalAmount = 0;
     for (const id in cartItems) {
-      const product = products.find(p => p._id === id);
-      if (product) {
-        totalAmount += product.offerPrice * cartItems[id];
-      }
+      const product = products.find(p => p.id === id);
+      if (product) totalAmount += (product.offerPrice || product.price) * cartItems[id];
     }
     return Math.floor(totalAmount * 100) / 100;
   };
@@ -120,9 +126,5 @@ export const AppContextProvider = (props) => {
     getCartAmount
   };
 
-  return (
-    <AppContext.Provider value={value}>
-      {props.children}
-    </AppContext.Provider>
-  );
+  return <AppContext.Provider value={value}>{props.children}</AppContext.Provider>;
 };
